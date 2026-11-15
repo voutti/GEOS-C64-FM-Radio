@@ -2,11 +2,12 @@
 #define FM_RADIO_H
 
 #include "radio_probe.h"
+#include "display_layout.h"
 
 #define RADIO_MIN 870
 #define RADIO_MAX 1080
-#define RADIO_SCALE_LEFT 53
-#define RADIO_SCALE_RIGHT 275
+#define RADIO_SCALE_LEFT DISPLAY_X(53)
+#define RADIO_SCALE_RIGHT DISPLAY_X(275)
 #define RADIO_MUTE 1
 #define RADIO_SOFTMUTE 2
 #define RADIO_DE50 4

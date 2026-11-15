@@ -1,0 +1,18 @@
+#ifndef FM_DISPLAY_LAYOUT_H
+#define FM_DISPLAY_LAYOUT_H
+
+#ifdef GEOS_C128_80
+#define DISPLAY_X_SCALE 2
+#define DISPLAY_PLATFORM "GEOS 128 / 80 columns"
+#else
+#define DISPLAY_X_SCALE 1
+#define DISPLAY_PLATFORM "GEOS 64"
+#endif
+
+#define DISPLAY_X(x) ((unsigned int)(x) * DISPLAY_X_SCALE)
+#define DISPLAY_RIGHT(x) (DISPLAY_X(x) + DISPLAY_X_SCALE - 1)
+#define DISPLAY_WIDTH DISPLAY_X(320)
+#define DISPLAY_ICON_WIDTH (2 * DISPLAY_X_SCALE)
+#define DISPLAY_ICON_SIZE (1 + 32 * DISPLAY_X_SCALE)
+
+#endif

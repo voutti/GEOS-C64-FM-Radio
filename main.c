@@ -88,7 +88,8 @@ static struct Radio radio;
 static struct Settings settings;
 static bool store_active, loop_active, dirty;
 static char loop_index = 0xff, loop_seconds, status_seconds, initialize_ticks;
-static char tool_images[11][33], preset_images[10][33], scratch_image[33];
+static char tool_images[11][DISPLAY_ICON_SIZE], preset_images[10][DISPLAY_ICON_SIZE];
+static char scan_images[4][DISPLAY_ICON_SIZE], scratch_image[DISPLAY_ICON_SIZE];
 static bool display_ready, displayed_frequency_valid, displayed_marker_valid;
 static bool displayed_stereo, displayed_tuned;
 static unsigned int displayed_frequency, displayed_marker, displayed_tools, displayed_presets;
@@ -97,18 +98,28 @@ static char displayed_volume, displayed_signal, displayed_station[16];
 static char displayed_volume_height, displayed_signal_height;
 static const char *displayed_pictures[11];
 static char preset_labels[10][22];
-static const struct window log_area = {181, 197, 8, 311};
-static const struct window station_area = {100, 112, 72, 254};
-static const struct window meter_volume = {34, 76, 270, 276};
-static const struct window meter_signal = {34, 76, 283, 289};
-static const struct window scale_area = {165, 168, RADIO_SCALE_LEFT, RADIO_SCALE_RIGHT};
-static const struct window scale_clear = {162, 170, RADIO_SCALE_LEFT, RADIO_SCALE_RIGHT};
-static const struct window scale_hit_area = {144, 170, RADIO_SCALE_LEFT, RADIO_SCALE_RIGHT + 9};
+static const struct window log_area = {181, 197, DISPLAY_X(8), DISPLAY_RIGHT(311)};
+static const struct window station_area = {100, 112, DISPLAY_X(72), DISPLAY_RIGHT(254)};
+static const struct window meter_volume = {34, 76, DISPLAY_X(270), DISPLAY_RIGHT(276)};
+static const struct window meter_signal = {34, 76, DISPLAY_X(283), DISPLAY_RIGHT(289)};
+static const struct window scale_area = {
+    165, 168, RADIO_SCALE_LEFT, RADIO_SCALE_RIGHT + DISPLAY_X_SCALE - 1
+};
+static const struct window scale_clear = {
+    162, 170, RADIO_SCALE_LEFT, RADIO_SCALE_RIGHT + DISPLAY_X_SCALE - 1
+};
+static const struct window scale_hit_area = {
+    144, 170, RADIO_SCALE_LEFT, RADIO_SCALE_RIGHT + DISPLAY_RIGHT(9)
+};
 static const struct window frames[] = {
-    {0, 199, 0, 319}, {28, 92, 264, 298}, {28, 108, 264, 298},
-    {33, 77, 269, 277}, {33, 77, 282, 290},
-    {144, 147, RADIO_SCALE_LEFT, RADIO_SCALE_RIGHT},
-    {165, 168, RADIO_SCALE_LEFT, RADIO_SCALE_RIGHT}, {180, 180, 8, 311}
+    {0, 199, 0, DISPLAY_WIDTH - 1},
+    {28, 92, DISPLAY_X(264), DISPLAY_RIGHT(298)},
+    {28, 108, DISPLAY_X(264), DISPLAY_RIGHT(298)},
+    {33, 77, DISPLAY_X(269), DISPLAY_RIGHT(277)},
+    {33, 77, DISPLAY_X(282), DISPLAY_RIGHT(290)},
+    {144, 147, RADIO_SCALE_LEFT, RADIO_SCALE_RIGHT + DISPLAY_X_SCALE - 1},
+    {165, 168, RADIO_SCALE_LEFT, RADIO_SCALE_RIGHT + DISPLAY_X_SCALE - 1},
+    {180, 180, DISPLAY_X(8), DISPLAY_RIGHT(311)}
 };
 
 static const struct menu file_menu = {
@@ -145,7 +156,7 @@ static const struct menu channel_menu = {
     }
 };
 static const struct menu main_menu = {
-    {0, 14, 0, 319}, 4 | HORIZONTAL,
+    {0, 14, 0, DISPLAY_WIDTH - 1}, 4 | HORIZONTAL,
     {
         {" File ", SUB_MENU, {.submenu = &file_menu}},
         {" Settings ", SUB_MENU, {.submenu = &settings_menu}},
@@ -155,11 +166,13 @@ static const struct menu main_menu = {
 };
 
 #define TOOL_ICON(index, callback) \
-    {tool_images[index], 2 + ((index) & 1) * 2, 25 + ((index) / 2) * 16, 2, 16, callback##_geos}
+    {tool_images[index], (2 + ((index) & 1) * 2) * DISPLAY_X_SCALE, \
+     25 + ((index) / 2) * 16, DISPLAY_ICON_WIDTH, 16, callback##_geos}
 #define PRESET_ICON(index, callback) \
-    {preset_images[index], 9 + (index) * 2, 25, 2, 16, callback##_geos}
+    {preset_images[index], (9 + (index) * 2) * DISPLAY_X_SCALE, \
+     25, DISPLAY_ICON_WIDTH, 16, callback##_geos}
 static const struct icontab radio_icons = {
-    25, 160, 100,
+    25, DISPLAY_X(160), 100,
     {
         TOOL_ICON(0, power_clicked), TOOL_ICON(1, store_clicked),
         TOOL_ICON(2, volume_down), TOOL_ICON(3, volume_up), TOOL_ICON(4, mute_clicked),
@@ -171,17 +184,17 @@ static const struct icontab radio_icons = {
         PRESET_ICON(4, preset_5), PRESET_ICON(5, preset_6),
         PRESET_ICON(6, preset_7), PRESET_ICON(7, preset_8),
         PRESET_ICON(8, preset_9), PRESET_ICON(9, preset_10),
-        {scan_pictures[0], 12, 115, 2, 16, seek_down_geos},
-        {scan_pictures[1], 17, 115, 2, 16, step_down_geos},
-        {scan_pictures[2], 22, 115, 2, 16, step_up_geos},
-        {scan_pictures[3], 27, 115, 2, 16, seek_up_geos}
+        {scan_images[0], 12 * DISPLAY_X_SCALE, 115, DISPLAY_ICON_WIDTH, 16, seek_down_geos},
+        {scan_images[1], 17 * DISPLAY_X_SCALE, 115, DISPLAY_ICON_WIDTH, 16, step_down_geos},
+        {scan_images[2], 22 * DISPLAY_X_SCALE, 115, DISPLAY_ICON_WIDTH, 16, step_up_geos},
+        {scan_images[3], 27 * DISPLAY_X_SCALE, 115, DISPLAY_ICON_WIDTH, 16, seek_up_geos}
     }
 };
 
 static void log_message(const char *text)
 {
     GeosClearArea(&log_area);
-    PutString(text, 193, 10);
+    PutString(text, 193, DISPLAY_X(10));
 }
 
 static void log_error(const char *text, unsigned int error)
@@ -189,8 +202,8 @@ static void log_error(const char *text, unsigned int error)
     log_message(text);
     char hex[5];
     radio_format_hex(error, hex);
-    PutString("$", 193, 274);
-    PutString(hex, 193, 282);
+    PutString("$", 193, DISPLAY_X(274));
+    PutString(hex, 193, DISPLAY_X(282));
 }
 
 static void release_menu(void)
@@ -224,12 +237,47 @@ static void update_labels(void)
 
 static void bitmap(const char *source, char *image, char x, char y, bool selected)
 {
+#ifdef GEOS_C128_80
+    static const char doubled_nibbles[16] = {
+        0x00, 0x03, 0x0c, 0x0f, 0x30, 0x33, 0x3c, 0x3f,
+        0xc0, 0xc3, 0xcc, 0xcf, 0xf0, 0xf3, 0xfc, 0xff
+    };
+    image[0] = 0xc0;
+    for (char index = 0; index != 32; ++index)
+    {
+        char pixels = source[index + 1];
+        if (selected && index >= 2 && index < 30)
+            pixels ^= (index & 1) ? 0xfe : 0x7f;
+        image[1 + index * 2] = doubled_nibbles[pixels >> 4];
+        image[2 + index * 2] = doubled_nibbles[pixels & 15];
+    }
+#else
     memcpy(image, source, 33);
     if (selected)
         for (char index = 2; index < 30; ++index)
             image[index + 1] ^= (index & 1) ? 0xfe : 0x7f;
-    struct iconpic picture = {image, x, y, 2, 16};
+#endif
+    struct iconpic picture = {
+        image, x * DISPLAY_X_SCALE, y, DISPLAY_ICON_WIDTH, 16
+    };
     BitmapUp(&picture);
+}
+
+static void status_bitmap(const char *source, char x)
+{
+#ifdef GEOS_C128_80
+    char unframed[33];
+    memcpy(unframed, source, sizeof(unframed));
+    unframed[1] = unframed[2] = unframed[31] = unframed[32] = 0;
+    for (char row = 1; row != 15; ++row)
+    {
+        unframed[1 + row * 2] &= 0x7f;
+        unframed[2 + row * 2] &= 0xfe;
+    }
+    bitmap(unframed, scratch_image, x, 93, false);
+#else
+    bitmap(source, scratch_image, x, 93, false);
+#endif
 }
 
 static char meter(const struct window *area, char value, char maximum, char previous_height)
@@ -298,7 +346,9 @@ static void draw_state(void)
         if (stored) stored_presets |= bit;
         if (!display_ready || ((stored_presets ^ displayed_stored_presets) & bit))
         {
-            struct window line = {22, 22, 75 + index * 16, 84 + index * 16};
+            struct window line = {
+                22, 22, DISPLAY_X(75 + index * 16), DISPLAY_RIGHT(84 + index * 16)
+            };
             if (stored) GeosFillArea(&line);
             else GeosClearArea(&line);
         }
@@ -316,7 +366,7 @@ static void draw_state(void)
     if (!display_ready || strcmp(station, displayed_station))
     {
         GeosClearArea(&station_area);
-        PutString(station, 109, 80);
+        PutString(station, 109, DISPLAY_X(80));
         strcpy(displayed_station, station);
     }
     bool on = radio.valid && radio.power.state == RADIO_POWER_ON;
@@ -331,9 +381,16 @@ static void draw_state(void)
     bool stereo = on && (radio.status_a & 0x0400);
     bool tuned = on && (radio.status_b & 0x0100);
     if (!display_ready || stereo != displayed_stereo)
-        bitmap(stereo ? tool_pictures[8] : mono_picture, scratch_image, 33, 93, false);
+        status_bitmap(stereo ? tool_pictures[8] : mono_picture, 33);
     if (!display_ready || tuned != displayed_tuned)
-        bitmap(tuned ? tuned_picture : indicator_pictures[1], scratch_image, 35, 93, false);
+        status_bitmap(tuned ? tuned_picture : indicator_pictures[1], 35);
+#ifdef GEOS_C128_80
+    if (!display_ready || stereo != displayed_stereo || tuned != displayed_tuned)
+    {
+        static const struct window status_frame = {92, 108, DISPLAY_X(264), DISPLAY_RIGHT(298)};
+        GeosFrameArea(&status_frame);
+    }
+#endif
     displayed_stereo = stereo;
     displayed_tuned = tuned;
     bool marker_valid = on && radio.frequency_valid;
@@ -345,7 +402,7 @@ static void draw_state(void)
         if (marker_valid)
         {
             unsigned int x = radio_scale_position(radio.frequency);
-            struct window marker = {163, 170, x, x};
+            struct window marker = {163, 170, x, x + DISPLAY_X_SCALE - 1};
             GeosFrameArea(&marker);
         }
     }
@@ -727,7 +784,7 @@ void cancel_clicked(void)
 void about_clicked(void)
 {
     release_menu();
-    GeosMessage("FM-Radio " APP_VERSION " / RDA5807 / GEOS 64", wiring_description);
+    GeosMessage("FM-Radio " APP_VERSION " / RDA5807 / " DISPLAY_PLATFORM, wiring_description);
     DoMenu(&main_menu);
 }
 
@@ -779,13 +836,13 @@ static void draw_gui(void)
         GeosFrameArea(&frames[index]);
     static const char scan_x[] = {12, 17, 22, 27};
     for (char index = 0; index != 4; ++index)
-        bitmap(scan_pictures[index], scratch_image, scan_x[index], 115, false);
-    PutString("100 kHz steps / automatic seek", 138, 80);
-    PutString("V", 88, 270);
-    PutString("I", 88, 285);
-    PutString("FM-Radio", 60, 190);
-    PutString("MHz", 94, 232);
-    PutString("FM", 158, 16);
+        bitmap(scan_pictures[index], scan_images[index], scan_x[index], 115, false);
+    PutString("100 kHz steps / automatic seek", 138, DISPLAY_X(80));
+    PutString("V", 88, DISPLAY_X(270));
+    PutString("I", 88, DISPLAY_X(285));
+    PutString("FM-Radio", 60, DISPLAY_X(190));
+    PutString("MHz", 94, DISPLAY_X(232));
+    PutString("FM", 158, DISPLAY_X(16));
     PutString("88", 158, radio_scale_position(880) - 6);
     PutString("92", 158, radio_scale_position(920) - 6);
     PutString("95", 158, radio_scale_position(950) - 6);
@@ -793,7 +850,7 @@ static void draw_gui(void)
     PutString("102", 158, radio_scale_position(1020) - 9);
     PutString("106", 158, radio_scale_position(1060) - 9);
     PutString("108", 158, radio_scale_position(1080) - 9);
-    PutString("MHz", 158, 287);
+    PutString("MHz", 158, DISPLAY_X(287));
 }
 
 int main(void)

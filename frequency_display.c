@@ -14,27 +14,34 @@ static const char frequency_digits[10][8] = {
     {0x7e,0xff,0xe7,0x7e,0x7e,0xe7,0xff,0x7e},
     {0x7e,0xff,0xe7,0xff,0x7f,0x07,0xff,0x7e}
 };
-static char digit_image[160];
-static const struct window frequency_area = {65, 96, 72, 223};
-static const struct window decimal_point = {93, 96, 184, 187};
+static char digit_image[32 * (1 + 4 * DISPLAY_X_SCALE)];
+static const struct window frequency_area = {65, 96, DISPLAY_X(72), DISPLAY_RIGHT(223)};
+static const struct window decimal_point = {93, 96, DISPLAY_X(184), DISPLAY_RIGHT(187)};
 
 static void draw_digit(char number, char position)
 {
-    char index = 0;
+    unsigned int index = 0;
     for (char row = 0; row != 8; ++row)
         for (char repeat = 0; repeat != 4; ++repeat)
         {
             // Each GEOS bitmap scanline is a literal run of four bytes.
-            digit_image[index++] = 0x84;
-            for (char pair = 0; pair != 4; ++pair)
+            digit_image[index++] = 0x80 + 4 * DISPLAY_X_SCALE;
+            for (char pair = 0; pair != 4 * DISPLAY_X_SCALE; ++pair)
             {
                 char pixels = frequency_digits[number][row];
+#ifdef GEOS_C128_80
+                char expanded = pixels & (0x80 >> pair) ? 0xff : 0;
+#else
                 char expanded = pixels & (0x80 >> (pair * 2)) ? 0xf0 : 0;
                 if (pixels & (0x40 >> (pair * 2))) expanded |= 0x0f;
+#endif
                 digit_image[index++] = expanded;
             }
         }
-    struct iconpic picture = {digit_image, 9 + position * 5, 65, 4, 32};
+    struct iconpic picture = {
+        digit_image, (9 + position * 5) * DISPLAY_X_SCALE, 65,
+        4 * DISPLAY_X_SCALE, 32
+    };
     BitmapUp(&picture);
 }
 
@@ -52,7 +59,9 @@ void draw_frequency(unsigned int frequency, bool valid)
     else
         for (char position = 0; position != 4; ++position)
         {
-            struct window dash = {79, 82, 76 + position * 40, 99 + position * 40};
+            struct window dash = {
+                79, 82, DISPLAY_X(76 + position * 40), DISPLAY_RIGHT(99 + position * 40)
+            };
             GeosFillArea(&dash);
         }
     GeosFillArea(&decimal_point);
