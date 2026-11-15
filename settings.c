@@ -7,17 +7,32 @@ static char record[SETTINGS_SIZE];
 static char verification[SETTINGS_SIZE];
 static struct Settings candidate;
 
+/**
+ * @brief Decode a little-endian 16-bit field.
+ * @param bytes Address of the two-byte field.
+ * @return Decoded value.
+ */
 static unsigned int get_word(const char *bytes)
 {
     return bytes[0] | ((unsigned int)bytes[1] << 8);
 }
 
+/**
+ * @brief Encode a little-endian 16-bit field.
+ * @param[out] bytes Destination with room for two bytes.
+ * @param value Value to encode.
+ */
 static void put_word(char *bytes, unsigned int value)
 {
     bytes[0] = value;
     bytes[1] = value >> 8;
 }
 
+/**
+ * @brief Calculate CRC-16/CCITT with initial value 0xffff over the record body.
+ * @param bytes SETTINGS_SIZE-byte record; its final two CRC bytes are excluded.
+ * @return Calculated CRC.
+ */
 static unsigned int checksum(const char *bytes)
 {
     unsigned int crc = 0xffff;
@@ -30,6 +45,10 @@ static unsigned int checksum(const char *bytes)
     return crc;
 }
 
+/**
+ * @brief Initialize default audio/frequency settings and clear all presets.
+ * @param[out] settings Defaults with no previously committed disk slot.
+ */
 void settings_default(struct Settings *settings)
 {
     memset(settings, 0, sizeof(*settings));
@@ -39,6 +58,11 @@ void settings_default(struct Settings *settings)
     settings->slot = 0xff;
 }
 
+/**
+ * @brief Serialize settings into the shared FMR1 record format with a CRC.
+ * @param settings Settings and generation to serialize.
+ * @param[out] bytes Destination with room for SETTINGS_SIZE bytes.
+ */
 void settings_encode(const struct Settings *settings, char *bytes)
 {
     memcpy(bytes, "FMR1", 4);
@@ -55,6 +79,13 @@ void settings_encode(const struct Settings *settings, char *bytes)
     put_word(bytes + SETTINGS_SIZE - 2, checksum(bytes));
 }
 
+/**
+ * @brief Validate and decode a settings record without accepting partial data.
+ * @param[in,out] settings Updated only after the complete record is validated.
+ * @param bytes SETTINGS_SIZE-byte FMR1 record.
+ * @return True on success; false for invalid CRC, fields or preset names.
+ * @note Does not assign the disk slot; the loader identifies that separately.
+ */
 bool settings_decode(struct Settings *settings, const char *bytes)
 {
     if (memcmp(bytes, "FMR1", 4) || get_word(bytes + SETTINGS_SIZE - 2) != checksum(bytes))
@@ -94,6 +125,12 @@ bool settings_decode(struct Settings *settings, const char *bytes)
     return true;
 }
 
+/**
+ * @brief Load the newest valid settings slot, handling generation rollover.
+ * @param[in,out] settings Loaded record and slot; unchanged if neither is valid.
+ * @return Zero on success, or a GEOS read/validation error.
+ * @note Reports an invalid other slot through settings->warning on recovery.
+ */
 char settings_load(struct Settings *settings)
 {
     bool found = false;
@@ -122,6 +159,12 @@ char settings_load(struct Settings *settings)
     return 0;
 }
 
+/**
+ * @brief Replace the alternate slot and verify its contents before committing.
+ * @param[in,out] settings Generation and slot advance only after readback succeeds.
+ * @return Zero on success, or a GEOS write/read/validation error.
+ * @note Keeps the previously committed slot as a recovery copy.
+ */
 char settings_save(struct Settings *settings)
 {
     candidate = *settings;

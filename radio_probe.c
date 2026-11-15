@@ -8,6 +8,11 @@
 #error "The GEOS radio probe requires I2C_NO_STDIO."
 #endif
 
+/**
+ * @brief Format a 16-bit value as four uppercase hexadecimal digits.
+ * @param value Value to format.
+ * @param[out] text Destination with room for five bytes, including the NUL.
+ */
 void radio_format_hex(unsigned int value, char *text)
 {
     static const char digits[] = "0123456789ABCDEF";
@@ -19,6 +24,11 @@ void radio_format_hex(unsigned int value, char *text)
     text[4] = 0;
 }
 
+/**
+ * @brief Read the chip ID and reception status without writing tuner registers.
+ * @param[out] result Read values, last probe stage and bus error.
+ * @note Restores the I2C port and direction registers before returning.
+ */
 void radio_probe(struct RadioProbe *result)
 {
     unsigned char saved_direction = PEEK(DIRREG);
@@ -53,6 +63,12 @@ void radio_probe(struct RadioProbe *result)
     POKE(DIRREG, saved_direction);
 }
 
+/**
+ * @brief Validate the RDA5807 and optionally toggle its ENABLE bit with readback.
+ * @param[out] result Power state, register values, operation stage and error.
+ * @param toggle True to toggle power; false for a read-only query.
+ * @note Rejects toggling during SEEK/reset and restores the bus port settings.
+ */
 static void power_operation(struct RadioPower *result, bool toggle)
 {
     unsigned char saved_direction = PEEK(DIRREG);
@@ -120,11 +136,19 @@ restore:
     POKE(DIRREG, saved_direction);
 }
 
+/**
+ * @brief Read and validate the tuner power state without changing it.
+ * @param[out] result Power state and any probe error.
+ */
 void radio_read_power(struct RadioPower *result)
 {
     power_operation(result, false);
 }
 
+/**
+ * @brief Toggle tuner power, preserving other control bits and verifying ENABLE.
+ * @param[out] result Verified power state or the failing stage and error.
+ */
 void radio_toggle_power(struct RadioPower *result)
 {
     power_operation(result, true);

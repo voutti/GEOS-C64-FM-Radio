@@ -1,6 +1,12 @@
 #include "radio.h"
 #include <i2c.h>
 
+/**
+ * @brief Read a big-endian RDA5807 register through random-address I2C.
+ * @param reg Register address.
+ * @param[out] value Register value, assigned only on success.
+ * @return Bus result code.
+ */
 static app_ret_code_t read_word(char reg, unsigned int *value)
 {
     char bytes[2];
@@ -10,6 +16,14 @@ static app_ret_code_t read_word(char reg, unsigned int *value)
     return error;
 }
 
+/**
+ * @brief Update selected register bits and verify them by readback.
+ * @param reg Register address.
+ * @param mask Bits to change; all other bits are preserved.
+ * @param value Desired values for the masked bits.
+ * @return Bus error or APP_RET_ERR_INVALID_STATE on readback mismatch.
+ * @note The self-clearing SEEK bit is excluded from register 2 verification.
+ */
 static app_ret_code_t update_word(char reg, unsigned int mask, unsigned int value)
 {
     unsigned int previous;
@@ -28,6 +42,12 @@ static app_ret_code_t update_word(char reg, unsigned int mask, unsigned int valu
     return error;
 }
 
+/**
+ * @brief Check power and hardware/software busy state before a control operation.
+ * @param[in,out] radio Power/error snapshot; marked invalid on failure.
+ * @param allow_busy True to permit cancellation of an active operation.
+ * @return True when the requested operation may proceed.
+ */
 static bool ready(struct Radio *radio, bool allow_busy)
 {
     radio_read_power(&radio->power);
@@ -53,6 +73,11 @@ static bool ready(struct Radio *radio, bool allow_busy)
     return true;
 }
 
+/**
+ * @brief Refresh power, audio flags, frequency and reception status.
+ * @param[in,out] radio Updated snapshot; validity flags are cleared on read failure.
+ * @note Performs no tuner writes and restores bus port/direction registers.
+ */
 void radio_refresh(struct Radio *radio)
 {
     radio->valid = false;
@@ -96,6 +121,12 @@ void radio_refresh(struct Radio *radio)
     radio->power.stage = RADIO_PROBE_COMPLETE;
 }
 
+/**
+ * @brief Apply audio controls to a powered, idle tuner and refresh the snapshot.
+ * @param[in,out] radio Operation error and refreshed state.
+ * @param volume Volume level, 0-15.
+ * @param flags Combination of RADIO_* audio flags, using only the low six bits.
+ */
 void radio_audio(struct Radio *radio, char volume, char flags)
 {
     if (volume > 15 || (flags & 0xc0))
@@ -129,6 +160,12 @@ void radio_audio(struct Radio *radio, char volume, char flags)
     }
 }
 
+/**
+ * @brief Start asynchronous tuning in the 87.0-108.0 MHz, 100 kHz band.
+ * @param[in,out] radio Operation state and error; frequency becomes unconfirmed.
+ * @param frequency Requested frequency in 100 kHz units.
+ * @note Call radio_poll() once per second to detect completion or timeout.
+ */
 void radio_tune(struct Radio *radio, unsigned int frequency)
 {
     if (frequency < RADIO_MIN || frequency > RADIO_MAX)
@@ -167,6 +204,14 @@ void radio_tune(struct Radio *radio, unsigned int frequency)
         radio->valid = false;
 }
 
+/**
+ * @brief Apply audio settings, select the standard band mode and start tuning.
+ * @param[in,out] radio Operation state and error.
+ * @param volume Volume level, 0-15.
+ * @param flags Combination of RADIO_* audio flags.
+ * @param frequency Frequency in 100 kHz units, 870-1080.
+ * @note Requires a powered, idle tuner with a settled oscillator.
+ */
 void radio_configure(struct Radio *radio, char volume, char flags, unsigned int frequency)
 {
     if (frequency < RADIO_MIN || frequency > RADIO_MAX || volume > 15 || (flags & 0xc0))
@@ -188,6 +233,12 @@ void radio_configure(struct Radio *radio, char volume, char flags, unsigned int 
         radio->valid = false;
 }
 
+/**
+ * @brief Start asynchronous station seeking from a confirmed frequency.
+ * @param[in,out] radio Operation state and error; frequency becomes unconfirmed.
+ * @param up True to seek upward; false to seek downward.
+ * @note Uses stop-at-band-limit seeking; completion is handled by radio_poll().
+ */
 void radio_seek(struct Radio *radio, bool up)
 {
     if (!ready(radio, false))
@@ -218,6 +269,11 @@ void radio_seek(struct Radio *radio, bool up)
         radio->valid = false;
 }
 
+/**
+ * @brief Clear SEEK/TUNE requests and return the software operation to idle.
+ * @param[in,out] radio Refreshed state on success, or the cancellation error.
+ * @note Does not switch power off or reset the tuner's audio preferences.
+ */
 void radio_cancel(struct Radio *radio)
 {
     if (!ready(radio, true))
@@ -242,6 +298,12 @@ void radio_cancel(struct Radio *radio)
         radio->valid = false;
 }
 
+/**
+ * @brief Refresh reception and advance tune/seek completion and timeout handling.
+ * @param[in,out] radio Status snapshot, operation state and any error.
+ * @note For active operations, call once per second: tune times out after
+ * eight polls and seek after twenty. Idle calls only refresh the snapshot.
+ */
 void radio_poll(struct Radio *radio)
 {
     enum RadioOperation operation = radio->operation;
@@ -281,6 +343,11 @@ void radio_poll(struct Radio *radio)
         radio->frequency_valid = false;
 }
 
+/**
+ * @brief Map an analog-scale pixel position to the nearest 100 kHz frequency.
+ * @param x Physical pixel X in the current target's layout.
+ * @return Frequency in 100 kHz units, clamped to RADIO_MIN..RADIO_MAX.
+ */
 unsigned int radio_scale_frequency(unsigned int x)
 {
     if (x <= RADIO_SCALE_LEFT) return RADIO_MIN;
@@ -289,6 +356,11 @@ unsigned int radio_scale_frequency(unsigned int x)
         (RADIO_SCALE_RIGHT - RADIO_SCALE_LEFT) / 2) / (RADIO_SCALE_RIGHT - RADIO_SCALE_LEFT);
 }
 
+/**
+ * @brief Map a frequency to its rounded analog-scale marker position.
+ * @param frequency Frequency in 100 kHz units.
+ * @return Physical pixel X, clamped to the target's scale endpoints.
+ */
 unsigned int radio_scale_position(unsigned int frequency)
 {
     if (frequency <= RADIO_MIN) return RADIO_SCALE_LEFT;
@@ -297,6 +369,11 @@ unsigned int radio_scale_position(unsigned int frequency)
         (RADIO_MAX - RADIO_MIN) / 2) / (RADIO_MAX - RADIO_MIN);
 }
 
+/**
+ * @brief Format a supported frequency as MHz with one decimal place.
+ * @param frequency Frequency in 100 kHz units, 870-1080.
+ * @param[out] text Destination with room for six bytes, including the NUL.
+ */
 void radio_frequency_text(unsigned int frequency, char *text)
 {
     char index = 0;
@@ -309,6 +386,12 @@ void radio_frequency_text(unsigned int frequency, char *text)
     text[index] = 0;
 }
 
+/**
+ * @brief Parse a complete MHz string with one decimal digit and validate the band.
+ * @param text NUL-terminated input, for example "88.6" or "100.1".
+ * @param[out] frequency Frequency in 100 kHz units, assigned only on success.
+ * @return True for a valid 87.0-108.0 MHz value; false otherwise.
+ */
 bool radio_parse_frequency(const char *text, unsigned int *frequency)
 {
     unsigned int value = 0;

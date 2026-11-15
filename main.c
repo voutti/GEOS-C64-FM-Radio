@@ -15,10 +15,25 @@ static void tool_clicked(char tool);
 static void preset_clicked(char preset);
 static void scan_clicked(char scan);
 
+/**
+ * @brief Define a tool callback forwarding its fixed index to tool_clicked().
+ * @param name Callback function name.
+ * @param index Tool index, 0-10.
+ */
 #define TOOL_HANDLER(name, index) \
     void name(void) { tool_clicked(index); }
+/**
+ * @brief Define a preset callback forwarding its fixed index to preset_clicked().
+ * @param name Callback function name.
+ * @param index Preset index, 0-9.
+ */
 #define PRESET_HANDLER(name, index) \
     void name(void) { preset_clicked(index); }
+/**
+ * @brief Define a seek/step callback forwarding its index to scan_clicked().
+ * @param name Callback function name.
+ * @param index Scan control index, 0-3.
+ */
 #define SCAN_HANDLER(name, index) \
     void name(void) { scan_clicked(index); }
 
@@ -191,12 +206,21 @@ static const struct icontab radio_icons = {
     }
 };
 
+/**
+ * @brief Replace the bottom status line with a message.
+ * @param text NUL-terminated text that fits the status area.
+ */
 static void log_message(const char *text)
 {
     GeosClearArea(&log_area);
     PutString(text, 193, DISPLAY_X(10));
 }
 
+/**
+ * @brief Display an error message and its four-digit hexadecimal code.
+ * @param text Description that leaves room for the code at the right.
+ * @param error Error code to display.
+ */
 static void log_error(const char *text, unsigned int error)
 {
     log_message(text);
@@ -206,12 +230,14 @@ static void log_error(const char *text, unsigned int error)
     PutString(hex, 193, DISPLAY_X(282));
 }
 
+/** @brief Recover the open menu and reinstall the application's main menu. */
 static void release_menu(void)
 {
     RecoverMenu();
     DoMenu(&main_menu);
 }
 
+/** @brief Rebuild channel-menu labels from preset names or stored frequencies. */
 static void update_labels(void)
 {
     for (char index = 0; index != 10; ++index)
@@ -235,6 +261,14 @@ static void update_labels(void)
     }
 }
 
+/**
+ * @brief Prepare and draw a 16x16 source icon, expanding it for 80-column mode.
+ * @param source Compact bitmap containing a literal 32-byte run.
+ * @param[out] image Destination with room for DISPLAY_ICON_SIZE bytes.
+ * @param x Horizontal card position in the base 40-column layout.
+ * @param y Physical pixel Y.
+ * @param selected Whether to invert the icon interior, preserving its border.
+ */
 static void bitmap(const char *source, char *image, char x, char y, bool selected)
 {
 #ifdef GEOS_C128_80
@@ -263,6 +297,12 @@ static void bitmap(const char *source, char *image, char x, char y, bool selecte
     BitmapUp(&picture);
 }
 
+/**
+ * @brief Draw a stereo/tuned icon, removing its individual box on C128.
+ * @param source Compact 16x16 status icon.
+ * @param x Horizontal card position in the base 40-column layout.
+ * @note The caller restores the shared C128 frame after drawing the icons.
+ */
 static void status_bitmap(const char *source, char x)
 {
 #ifdef GEOS_C128_80
@@ -280,6 +320,15 @@ static void status_bitmap(const char *source, char x)
 #endif
 }
 
+/**
+ * @brief Update only the rows added to or removed from a vertical meter.
+ * @param area Inclusive physical-pixel bounds of the meter interior.
+ * @param value Current level, 0..maximum.
+ * @param maximum Nonzero full-scale level.
+ * @param previous_height Previously painted height in pixels.
+ * @return New painted height in pixels.
+ * @note Clears the whole interior only for the initial display paint.
+ */
 static char meter(const struct window *area, char value, char maximum, char previous_height)
 {
     char height = (unsigned int)value * (area->bottom - area->top + 1) / maximum;
@@ -307,6 +356,10 @@ static char meter(const struct window *area, char value, char maximum, char prev
     return height;
 }
 
+/**
+ * @brief Paint changed controls, presets, frequency, meters and status indicators.
+ * @note Updates display caches so unchanged polling results cause no drawing.
+ */
 static void draw_state(void)
 {
     static const char flag_for_tool[11] = {
@@ -411,6 +464,7 @@ static void draw_state(void)
     display_ready = true;
 }
 
+/** @brief Copy valid live tuner preferences into settings and mark changes dirty. */
 static void remember_live(void)
 {
     if (!radio.valid)
@@ -424,6 +478,10 @@ static void remember_live(void)
         settings.frequency = radio.frequency;
 }
 
+/**
+ * @brief Check whether tuner-dependent controls may run, reporting why if not.
+ * @return True for a valid, powered, idle tuner after oscillator startup.
+ */
 static bool usable(void)
 {
     if (initialize_ticks)
@@ -444,6 +502,10 @@ static bool usable(void)
     return true;
 }
 
+/**
+ * @brief Request tuning and update the GUI with progress or failure feedback.
+ * @param frequency Requested frequency in 100 kHz units.
+ */
 static void tune_to(unsigned int frequency)
 {
     radio_tune(&radio, frequency);
@@ -454,6 +516,10 @@ static void tune_to(unsigned int frequency)
         log_message("Tuning...");
 }
 
+/**
+ * @brief Tune from a mouse-down event inside the analog scale.
+ * @note Ignores releases, open menus, outside clicks and unavailable tuner state.
+ */
 void scale_clicked(void)
 {
     unsigned int x;
@@ -469,6 +535,10 @@ void scale_clicked(void)
     tune_to(radio_scale_frequency(x));
 }
 
+/**
+ * @brief Advance cyclically to the next occupied preset and start tuning it.
+ * @return True if tuning started; false on failure or when no preset is stored.
+ */
 static bool next_preset(void)
 {
     for (char attempt = 0; attempt != 10; ++attempt)
@@ -484,6 +554,11 @@ static bool next_preset(void)
     return false;
 }
 
+/**
+ * @brief Dispatch power, store, audio and preset-loop toolbar actions.
+ * @param tool Toolbar index: 0 power, 1 store, 2-9 audio controls, 10 loop.
+ * @note Power-on defers preference application until the oscillator settles.
+ */
 static void tool_clicked(char tool)
 {
     if (tool == 0)
@@ -556,6 +631,11 @@ static void tool_clicked(char tool)
     draw_state();
 }
 
+/**
+ * @brief Recall a preset, or name and store the current station in Store mode.
+ * @param preset Preset index, 0-9.
+ * @note Changes remain in memory until the user saves settings.
+ */
 static void preset_clicked(char preset)
 {
     if (PEEK(0x84b7))
@@ -605,6 +685,11 @@ static void preset_clicked(char preset)
     DoMenu(&main_menu);
 }
 
+/**
+ * @brief Dispatch station seeking or a single 100 kHz tuning step.
+ * @param scan 0 seek down, 1 step down, 2 step up, 3 seek up.
+ * @note Stops preset looping and refuses steps beyond the supported band.
+ */
 static void scan_clicked(char scan)
 {
     if (!usable())
@@ -626,6 +711,7 @@ static void scan_clicked(char scan)
         tune_to(scan == 1 ? radio.frequency - 1 : radio.frequency + 1);
 }
 
+/** @brief Save and verify settings, clearing dirty state only after success. */
 void save_clicked(void)
 {
     release_menu();
@@ -638,6 +724,10 @@ void save_clicked(void)
     }
 }
 
+/**
+ * @brief Load the newest valid settings and refresh preset labels.
+ * @note Applies preferences only when powered on and not awaiting startup.
+ */
 void load_clicked(void)
 {
     release_menu();
@@ -664,6 +754,10 @@ void load_clicked(void)
     else log_message("Settings loaded.");
 }
 
+/**
+ * @brief Confirm unsaved changes, cancel active tuning and return to the desktop.
+ * @note Leaves tuner power/audio on; refuses to exit if cancellation fails.
+ */
 void quit_clicked(void)
 {
     release_menu();
@@ -696,6 +790,7 @@ static const char wiring_description[] =
     "User port: SDA=PB2 SCL=PB3";
 #endif
 
+/** @brief Show the build's fixed I2C port and pin assignments in a modal dialog. */
 void wiring_clicked(void)
 {
     release_menu();
@@ -703,6 +798,10 @@ void wiring_clicked(void)
     DoMenu(&main_menu);
 }
 
+/**
+ * @brief Cancel pending work, power on if needed and restart preference setup.
+ * @note Configuration resumes from idle_tick() after the oscillator delay.
+ */
 void reinit_clicked(void)
 {
     release_menu();
@@ -723,6 +822,11 @@ void reinit_clicked(void)
     else log_message("Radio restarting...");
 }
 
+/**
+ * @brief Confirm and restore default preferences, clearing all stored presets.
+ * @note Retains disk-slot metadata and marks defaults unsaved; applies them to
+ * a powered tuner when startup is not pending.
+ */
 void reset_clicked(void)
 {
     release_menu();
@@ -750,6 +854,7 @@ void reset_clicked(void)
     DoMenu(&main_menu);
 }
 
+/** @brief Prompt for a MHz frequency, validate it and request asynchronous tuning. */
 void tune_clicked(void)
 {
     release_menu();
@@ -770,6 +875,7 @@ void tune_clicked(void)
     DoMenu(&main_menu);
 }
 
+/** @brief Stop looping/startup and cancel tuner work, displaying its result. */
 void cancel_clicked(void)
 {
     release_menu();
@@ -781,6 +887,7 @@ void cancel_clicked(void)
     else log_message("Tune / seek cancelled.");
 }
 
+/** @brief Show application version, target platform and build wiring. */
 void about_clicked(void)
 {
     release_menu();
@@ -788,6 +895,11 @@ void about_clicked(void)
     DoMenu(&main_menu);
 }
 
+/**
+ * @brief Advance startup, tuner polling and timed preset cycling.
+ * @note Invoked by the guarded GEOS second callback. Active operations poll
+ * each second; idle reception polls every three seconds.
+ */
 void idle_tick(void)
 {
     if (initialize_ticks)
@@ -829,6 +941,7 @@ void idle_tick(void)
     draw_state();
 }
 
+/** @brief Paint static frames, scan icons and labels for the selected layout. */
 static void draw_gui(void)
 {
     GeosClearScreen();
@@ -853,6 +966,11 @@ static void draw_gui(void)
     PutString("MHz", 158, DISPLAY_X(287));
 }
 
+/**
+ * @brief Load preferences, read the tuner and install the GEOS GUI and callbacks.
+ * @return Zero if control returns; MainLoop() normally transfers to GEOS forever.
+ * @note Startup is read-only with respect to tuner power and control registers.
+ */
 int main(void)
 {
     settings_default(&settings);

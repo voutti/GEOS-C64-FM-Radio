@@ -18,6 +18,11 @@ static char digit_image[32 * (1 + 4 * DISPLAY_X_SCALE)];
 static const struct window frequency_area = {65, 96, DISPLAY_X(72), DISPLAY_RIGHT(223)};
 static const struct window decimal_point = {93, 96, DISPLAY_X(184), DISPLAY_RIGHT(187)};
 
+/**
+ * @brief Expand and draw one digit in the target's large-frequency layout.
+ * @param number Digit value, 0-9.
+ * @param position Display slot, 0-3, from hundreds to tenths of MHz.
+ */
 static void draw_digit(char number, char position)
 {
     unsigned int index = 0;
@@ -45,6 +50,12 @@ static void draw_digit(char number, char position)
     BitmapUp(&picture);
 }
 
+/**
+ * @brief Paint the large frequency display, or dashes for an unconfirmed value.
+ * @param frequency Frequency in 100 kHz units; supported range is 870-1080.
+ * @param valid Whether the frequency is confirmed by the tuner.
+ * @note Omits the leading hundreds digit below 100 MHz; always draws the point.
+ */
 void draw_frequency(unsigned int frequency, bool valid)
 {
     GeosClearArea(&frequency_area);
